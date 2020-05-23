@@ -11,8 +11,30 @@ import (
 	"github.com/awalterschulze/gographviz"
 )
 
+func SeqScanDotLabel(node *PlanNode) string {
+	relname := node.prop["Relation Name"]
+	return fmt.Sprintf(`"SeqScan %s\nRows=%d Width=%d"`, relname, uint64(node.rows), node.width)
+}
+
+func HashJoinDotLabel(node *PlanNode) string {
+	jointype := node.prop["Join Type"]
+	return fmt.Sprintf(`"HashJoin %s\nRows=%d Width=%d"`, jointype, uint64(node.rows), node.width)
+}
+
+func AggregateDotLabel(node *PlanNode) string {
+	strategy := node.prop["Strategy"]
+	return fmt.Sprintf(`"%sAggregate\nRows=%d Width=%d"`, strategy, uint64(node.rows), node.width)
+}
+
+var g_getdotlabel = map[string]func(node *PlanNode) string{
+	"SeqScan":   SeqScanDotLabel,
+	"HashJoin":  HashJoinDotLabel,
+	"Aggregate": AggregateDotLabel,
+}
+
 type PlanNode struct {
 	nodeType string
+	prop     map[string]interface{}
 	children []*PlanNode
 	parent   *PlanNode
 	slice    *Slice
@@ -45,6 +67,7 @@ func (this *PlanNode) Init(plan map[string]interface{}) {
 	this.nodeType = formatName(plan["Node Type"].(string))
 	this.rows = plan["Plan Rows"].(float64)
 	this.width = int(plan["Plan Width"].(float64))
+	this.prop = plan
 }
 
 func (this *PlanNode) IsMotion() bool {
@@ -56,6 +79,10 @@ func (this *PlanNode) DotName() string {
 }
 
 func (this *PlanNode) DotLabel() string {
+	f, ok := g_getdotlabel[this.nodeType]
+	if ok {
+		return f(this)
+	}
 	nodename := this.nodeType
 	if this.IsMotion() {
 		sendernum := this.children[0].slice.gangsize
