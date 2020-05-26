@@ -26,10 +26,30 @@ func AggregateDotLabel(node *PlanNode) string {
 	return fmt.Sprintf(`"%sAggregate\nRows=%d Width=%d"`, strategy, uint64(node.rows), node.width)
 }
 
+func fillInt64Prop(props []string, nodeprops map[string]interface{}, key string) []string {
+	if val, ok := nodeprops[key]; ok {
+		return append(props, fmt.Sprintf("%s=%d", key, int64(val.(float64))))
+	}
+	return props
+}
+
+func ForeignScanDotLabel(node *PlanNode) string {
+	relname := node.prop["Relation Name"]
+	var props []string
+	props = fillInt64Prop(props, node.prop, "OssFdwCsvMaxParallel")
+	props = fillInt64Prop(props, node.prop, "OssFdwTotalFiles")
+	props = fillInt64Prop(props, node.prop, "OssFdwTotalBytes")
+	if len(props) <= 0 {
+		return fmt.Sprintf(`"ForeignScan %s\nRows=%d Width=%d"`, relname, uint64(node.rows), node.width)
+	}
+	return fmt.Sprintf(`"ForeignScan %s\nRows=%d Width=%d\n%s"`, relname, uint64(node.rows), node.width, strings.Join(props, `\n`))
+}
+
 var g_getdotlabel = map[string]func(node *PlanNode) string{
-	"SeqScan":   SeqScanDotLabel,
-	"HashJoin":  HashJoinDotLabel,
-	"Aggregate": AggregateDotLabel,
+	"SeqScan":     SeqScanDotLabel,
+	"HashJoin":    HashJoinDotLabel,
+	"Aggregate":   AggregateDotLabel,
+	"ForeignScan": ForeignScanDotLabel,
 }
 
 type PlanNode struct {
