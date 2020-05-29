@@ -11,38 +11,105 @@ import (
 	"github.com/awalterschulze/gographviz"
 )
 
+func constructLabel(str ...string) string {
+	var newstrs []string
+	for _, strval := range str {
+		if len(strval) > 0 {
+			newstrs = append(newstrs, strval)
+		}
+	}
+	return fmt.Sprintf(`"%s"`, strings.Join(newstrs, `\n`))
+}
+
 func SeqScanDotLabel(node *PlanNode) string {
 	relname := node.prop["Relation Name"]
 	return fmt.Sprintf(`"SeqScan %s\nRows=%d Width=%d"`, relname, uint64(node.rows), node.width)
 }
 
 func HashJoinDotLabel(node *PlanNode) string {
-	jointype := node.prop["Join Type"]
-	return fmt.Sprintf(`"HashJoin %s\nRows=%d Width=%d"`, jointype, uint64(node.rows), node.width)
+	return constructLabel(
+		fmt.Sprintf("HashJoin %s", node.prop["Join Type"]),
+		node.prop["Hash Cond"].(string),
+		getRowWidth(node),
+	)
 }
 
 func AggregateDotLabel(node *PlanNode) string {
-	strategy := node.prop["Strategy"]
-	return fmt.Sprintf(`"%sAggregate\nRows=%d Width=%d"`, strategy, uint64(node.rows), node.width)
+	var props []string
+	props = append(props, fmt.Sprintf("%sAggregate", node.prop["Strategy"]))
+	for _, keyval := range node.prop["Group Key"].([]interface{}) {
+		groupkey := keyval.(string)
+		props = append(props, groupkey)
+	}
+	props = append(props, getRowWidth(node))
+	return constructLabel(props...)
 }
 
-func fillInt64Prop(props []string, nodeprops map[string]interface{}, key string) []string {
-	if val, ok := nodeprops[key]; ok {
-		return append(props, fmt.Sprintf("%s=%d", key, int64(val.(float64))))
+func getRowWidth(node *PlanNode) string {
+	return fmt.Sprintf("Rows=%d Width=%d", uint64(node.rows), node.width)
+}
+
+func getStrLabel(show, key string, node *PlanNode) string {
+	val := node.GetStrProp(key)
+	if len(val) <= 0 {
+		return ""
 	}
-	return props
+	return fmt.Sprintf("%s=%s", show, val)
+}
+
+func IndexScanDotLabel(node *PlanNode) string {
+	return constructLabel(
+		fmt.Sprintf("IndexScan %s", node.prop["Index Name"]),
+		node.prop["Index Cond"].(string),
+		getRowWidth(node),
+		getStrLabel("Direction", "Scan Direction", node),
+		getStrLabel("Relation", "Relation Name", node),
+	)
+}
+
+func getIntLabel(show, key string, node *PlanNode) string {
+	val, ok := node.prop[key]
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%s=%d", show, int64(val.(float64)))
 }
 
 func ForeignScanDotLabel(node *PlanNode) string {
-	relname := node.prop["Relation Name"]
-	var props []string
-	props = fillInt64Prop(props, node.prop, "OssFdwCsvMaxParallel")
-	props = fillInt64Prop(props, node.prop, "OssFdwTotalFiles")
-	props = fillInt64Prop(props, node.prop, "OssFdwTotalBytes")
-	if len(props) <= 0 {
-		return fmt.Sprintf(`"ForeignScan %s\nRows=%d Width=%d"`, relname, uint64(node.rows), node.width)
+	return constructLabel(
+		fmt.Sprintf("ForeignScan %s", node.prop["Relation Name"]),
+		getRowWidth(node),
+		getIntLabel("OssFdwTotalFiles", "OssFdwTotalFiles", node),
+		getIntLabel("OssFdwTotalBytes", "OssFdwTotalBytes", node),
+	)
+}
+
+func SortDotLabel(node *PlanNode) string {
+	sortkey, uniq := node.prop["Sort Key (Distinct)"]
+	if !uniq {
+		sortkey = node.prop["Sort Key"]
 	}
-	return fmt.Sprintf(`"ForeignScan %s\nRows=%d Width=%d\n%s"`, relname, uint64(node.rows), node.width, strings.Join(props, `\n`))
+	var props []string
+	if uniq {
+		props = append(props, "SortDistinct")
+	} else {
+		props = append(props, "Sort")
+	}
+	for _, sortkeyraw := range sortkey.([]interface{}) {
+		props = append(props, sortkeyraw.(string))
+	}
+	props = append(props, getRowWidth(node))
+	return constructLabel(props...)
+}
+
+func UniqueDotLabel(node *PlanNode) string {
+	var props []string
+	props = append(props, "Unique")
+	for _, sortkeyraw := range node.prop["Group Key"].([]interface{}) {
+		props = append(props, sortkeyraw.(string))
+	}
+	props = append(props, getRowWidth(node))
+	return constructLabel(props...)
 }
 
 var g_getdotlabel = map[string]func(node *PlanNode) string{
@@ -50,6 +117,9 @@ var g_getdotlabel = map[string]func(node *PlanNode) string{
 	"HashJoin":    HashJoinDotLabel,
 	"Aggregate":   AggregateDotLabel,
 	"ForeignScan": ForeignScanDotLabel,
+	"IndexScan":   IndexScanDotLabel,
+	"Sort":        SortDotLabel,
+	"Unique":      UniqueDotLabel,
 }
 
 type PlanNode struct {
@@ -61,6 +131,14 @@ type PlanNode struct {
 	rows     float64
 	width    int
 	id       int
+}
+
+func (this *PlanNode) GetStrProp(key string) string {
+	val, ok := this.prop[key]
+	if !ok {
+		return ""
+	}
+	return val.(string)
 }
 
 // "gather motion" -> "GatherMotion"
