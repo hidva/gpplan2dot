@@ -11,11 +11,15 @@ import (
 	"github.com/awalterschulze/gographviz"
 )
 
+func dotEscape(str string) string {
+	return strings.ReplaceAll(str, `"`, `\"`)
+}
+
 func constructLabel(str ...string) string {
 	var newstrs []string
 	for _, strval := range str {
 		if len(strval) > 0 {
-			newstrs = append(newstrs, strval)
+			newstrs = append(newstrs, dotEscape(strval))
 		}
 	}
 	return fmt.Sprintf(`"%s"`, strings.Join(newstrs, `\n`))
@@ -37,9 +41,12 @@ func HashJoinDotLabel(node *PlanNode) string {
 func AggregateDotLabel(node *PlanNode) string {
 	var props []string
 	props = append(props, fmt.Sprintf("%sAggregate", node.prop["Strategy"]))
-	for _, keyval := range node.prop["Group Key"].([]interface{}) {
-		groupkey := keyval.(string)
-		props = append(props, groupkey)
+	groupkeyraw, ok := node.prop["Group Key"]
+	if ok {
+		for _, keyval := range groupkeyraw.([]interface{}) {
+			groupkey := keyval.(string)
+			props = append(props, groupkey)
+		}
 	}
 	props = append(props, getRowWidth(node))
 	return constructLabel(props...)
