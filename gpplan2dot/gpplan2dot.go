@@ -27,7 +27,7 @@ func constructLabel(str ...string) string {
 
 func SeqScanDotLabel(node *PlanNode) string {
 	relname := node.prop["Relation Name"]
-	return fmt.Sprintf(`"%sSeqScan %s\nRows=%d Width=%d"`, node.NodeIdPrefix(), relname, uint64(node.rows), node.width)
+	return fmt.Sprintf(`"%sSeqScan %s\n%s"`, node.NodeIdPrefix(), relname, getRowWidth(node))
 }
 
 func HashJoinDotLabel(node *PlanNode) string {
