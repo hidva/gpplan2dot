@@ -209,7 +209,7 @@ func (this *PlanNode) DotLabel() string {
 		}
 		nodename = fmt.Sprintf("%s %d→%d", nodename, sendernum, recvnum)
 	}
-	return fmt.Sprintf(`"%s%s\nRows=%d Width=%d"`, this.NodeIdPrefix(), nodename, uint64(this.rows), this.width)
+	return fmt.Sprintf(`"%s%s\n%s"`, this.NodeIdPrefix(), nodename, getRowWidth(this))
 }
 
 type Slice struct {
